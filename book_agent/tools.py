@@ -38,10 +38,11 @@ def _safe_title(title: str) -> str:
 # ---------------------------------------------------------------------
 # save_markdown_to_gcs
 # ---------------------------------------------------------------------
-def _save_markdown(book_title: str, content_markdown: str) -> dict:
+def save_markdown_to_gcs(book_title: str, content_markdown: str) -> dict:
     """
     Saves the full book manuscript to Google Cloud Storage and returns URI info.
     """
+
     client = _get_client()
     bucket = client.bucket(BUCKET_NAME)
 
@@ -61,17 +62,18 @@ def _save_markdown(book_title: str, content_markdown: str) -> dict:
     }
 
 
-# The name exported to ADK as a tool:
-save_markdown_to_gcs = FunctionTool(_save_markdown)
+# Tool exposure — **no name= or description= allowed**
+save_markdown_to_gcs_tool = FunctionTool(func=save_markdown_to_gcs)
 
 
 # ---------------------------------------------------------------------
 # save_metadata_to_gcs
 # ---------------------------------------------------------------------
-def _save_metadata(book_title: str, metadata: dict) -> dict:
+def save_metadata_to_gcs(book_title: str, metadata: dict) -> dict:
     """
     Saves a metadata JSON file to Google Cloud Storage.
     """
+
     client = _get_client()
     bucket = client.bucket(BUCKET_NAME)
 
@@ -94,4 +96,6 @@ def _save_metadata(book_title: str, metadata: dict) -> dict:
     }
 
 
-save_metadata_to_gcs = FunctionTool(_save_metadata)
+# Tool exposure
+save_markdown_to_gcs = FunctionTool(save_markdown_to_gcs)
+save_metadata_to_gcs = FunctionTool(save_metadata_to_gcs)
