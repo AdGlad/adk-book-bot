@@ -202,54 +202,48 @@ manuscript_agent = Agent(
 # ------------------------------------------------------------
 
 GCS_SAVE_INSTRUCTION = """
-You save book data to cloud storage using tools.
+You are a deterministic helper that saves a book manuscript and its metadata.
 
 Input JSON:
 {
-  "working_title": "string",
-  "full_book_markdown": "string",
-  "metadata": { ...object... }
+  "working_title": "...",
+  "full_book_markdown": "...",
+  "metadata": { ... }
 }
 
-You MUST perform EXACTLY these steps in this order.
+You MUST do exactly the following:
 
-STEP 1 – Call save_markdown_to_gcs
-----------------------------------
-Call the tool named "save_markdown_to_gcs" with a JSON object:
+1) Call the tool "save_book_to_gcs" ONCE with:
+   {
+     "working_title": <input.working_title>,
+     "full_book_markdown": <input.full_book_markdown>,
+     "metadata": <input.metadata>
+   }
+
+2) Wait for the tool result. It will return:
+   {
+     "manuscript_gcs_uri": "gs://...",
+     "metadata_gcs_uri": "gs://..."
+   }
+
+3) Return JSON ONLY, with exactly this structure (no extra fields):
 
 {
-  "book_title": <working_title>,
-  "content_markdown": <full_book_markdown>
+  "manuscript_gcs_uri": "<from tool.manuscript_gcs_uri>",
+  "metadata_gcs_uri": "<from tool.metadata_gcs_uri>"
 }
 
-STEP 2 – After STEP 1 returns, call save_metadata_to_gcs
---------------------------------------------------------
-Let manuscript_result be the JSON result from STEP 1.
-Call the tool named "save_metadata_to_gcs" with a JSON object:
-
-{
-  "book_title": <working_title>,
-  "metadata": <metadata>
-}
-
-STEP 3 – Final output
----------------------
-After BOTH tool calls succeed, output JSON ONLY:
-
-{
-  "manuscript_gcs_uri": "<the gcs_uri returned by save_markdown_to_gcs>",
-  "metadata_gcs_uri": "<the gcs_uri returned by save_metadata_to_gcs>"
-}
+Rules:
+- Do NOT call any other tools.
+- Do NOT add commentary or Markdown.
+- Output must be valid JSON only.
 """
-
-from .tools import save_markdown_to_gcs_tool, save_metadata_to_gcs_tool
+from .tools import save_book_to_gcs
 
 gcs_save_agent = Agent(
     model="gemini-2.5-flash",
     name="gcs_save_agent",
     instruction=GCS_SAVE_INSTRUCTION,
-    tools=[
-        save_markdown_to_gcs_tool,
-        save_metadata_to_gcs_tool,
-    ],
+    tools=[save_book_to_gcs],
 )
+

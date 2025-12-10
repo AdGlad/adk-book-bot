@@ -97,3 +97,36 @@ def save_metadata_to_gcs(book_title: str, metadata: dict) -> dict:
 
 save_markdown_to_gcs_tool = FunctionTool(save_markdown_to_gcs)
 save_metadata_to_gcs_tool = FunctionTool(save_metadata_to_gcs)
+
+
+def save_book_to_gcs(working_title: str, full_book_markdown: str, metadata: dict) -> dict:
+    """
+    Composite helper that:
+      1) Saves the manuscript markdown
+      2) Saves the metadata JSON
+      3) Returns both GCS URIs in a simple JSON object
+    """
+
+    # 1) Save manuscript (call the plain Python function directly)
+    manuscript_result = save_markdown_to_gcs(
+        book_title=working_title,
+        content_markdown=full_book_markdown,
+    )
+    manuscript_uri = manuscript_result["gcs_uri"]
+
+    # 2) Save metadata (call the plain Python function directly)
+    metadata_result = save_metadata_to_gcs(
+        book_title=working_title,
+        metadata=metadata,
+    )
+    metadata_uri = metadata_result["gcs_uri"]
+
+    # 3) Final payload
+    return {
+        "manuscript_gcs_uri": manuscript_uri,
+        "metadata_gcs_uri": metadata_uri,
+    }
+
+
+# Expose as a tool the LLM can call
+save_book_to_gcs = FunctionTool(save_book_to_gcs)
