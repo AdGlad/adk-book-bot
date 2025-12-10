@@ -1,95 +1,97 @@
 # book_agent/tools.py
+"""
+Function tools for saving book data to Google Cloud Storage.
+
+Exposed tools:
+- save_markdown_to_gcs(book_title: str, content_markdown: str) -> dict
+- save_metadata_to_gcs(book_title: str, metadata: dict) -> dict
+"""
 
 import json
 import re
 import uuid
 from datetime import datetime
-from typing import Dict, Any
 
 from google.cloud import storage
+from google.adk.tools.function_tool import FunctionTool
 
 BUCKET_NAME = "adk-book-bot"
 
-
-def _slugify_title(book_title: str) -> str:
-    """Create a safe folder name from the book title."""
-    safe = re.sub(r"[^a-zA-Z0-9_-]+", "-", book_title).strip("-").lower()
-    return safe or "book"
+_storage_client = None
 
 
-def _gcs_client_and_prefix(book_title: str):
-    client = storage.Client()
+def _get_client() -> storage.Client:
+    global _storage_client
+    if _storage_client is None:
+        _storage_client = storage.Client()
+    return _storage_client
+
+
+def _safe_title(title: str) -> str:
+    if not title:
+        return "untitled"
+    value = re.sub(r"[^a-zA-Z0-9_-]+", "-", title)
+    value = value.strip("-").lower()
+    return value or "untitled"
+
+
+# ---------------------------------------------------------------------
+# save_markdown_to_gcs
+# ---------------------------------------------------------------------
+def _save_markdown(book_title: str, content_markdown: str) -> dict:
+    """
+    Saves the full book manuscript to Google Cloud Storage and returns URI info.
+    """
+    client = _get_client()
     bucket = client.bucket(BUCKET_NAME)
-    folder = _slugify_title(book_title)
-    return client, bucket, folder
 
-
-def save_markdown_to_gcs(book_title: str, content_markdown: str) -> Dict[str, str]:
-    """
-    Save a complete book manuscript (Markdown) into Google Cloud Storage.
-
-    Args:
-        book_title: The working title of the book. Used to build a folder path.
-        content_markdown: The full book manuscript in Markdown format.
-
-    Returns:
-        A dict with:
-          - gcs_uri: The gs:// URI of the uploaded object.
-          - bucket: The bucket name used.
-          - object_name: The object path within the bucket.
-    """
-    client, bucket, folder = _gcs_client_and_prefix(book_title)
-
+    folder = _safe_title(book_title)
     timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
-    short_uuid = uuid.uuid4().hex[:8]
-    object_name = f"{folder}/manuscript-{timestamp}-{short_uuid}.md"
+    uniq = uuid.uuid4().hex[:8]
+
+    object_name = f"{folder}/manuscript-{timestamp}-{uniq}.md"
 
     blob = bucket.blob(object_name)
-    blob.upload_from_string(
-        content_markdown,
-        content_type="text/markdown; charset=utf-8",
-    )
-
-    gcs_uri = f"gs://{BUCKET_NAME}/{object_name}"
+    blob.upload_from_string(content_markdown, content_type="text/markdown")
 
     return {
-        "gcs_uri": gcs_uri,
+        "gcs_uri": f"gs://{BUCKET_NAME}/{object_name}",
         "bucket": BUCKET_NAME,
         "object_name": object_name,
     }
 
 
-def save_metadata_to_gcs(book_title: str, metadata: Dict[str, Any]) -> Dict[str, str]:
+# The name exported to ADK as a tool:
+save_markdown_to_gcs = FunctionTool(_save_markdown)
+
+
+# ---------------------------------------------------------------------
+# save_metadata_to_gcs
+# ---------------------------------------------------------------------
+def _save_metadata(book_title: str, metadata: dict) -> dict:
     """
-    Save a compact metadata JSON file for the book into Google Cloud Storage.
-
-    Args:
-        book_title: The working title of the book. Used to build a folder path.
-        metadata: A JSON-serialisable dict with key book information
-                  (e.g. title, subtitle, chapter_count, blurb).
-
-    Returns:
-        A dict with:
-          - gcs_uri: The gs:// URI of the uploaded JSON.
-          - bucket: The bucket name used.
-          - object_name: The object path within the bucket.
+    Saves a metadata JSON file to Google Cloud Storage.
     """
-    client, bucket, folder = _gcs_client_and_prefix(book_title)
+    client = _get_client()
+    bucket = client.bucket(BUCKET_NAME)
 
+    folder = _safe_title(book_title)
     timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
-    short_uuid = uuid.uuid4().hex[:8]
-    object_name = f"{folder}/metadata-{timestamp}-{short_uuid}.json"
+    uniq = uuid.uuid4().hex[:8]
+
+    object_name = f"{folder}/metadata-{timestamp}-{uniq}.json"
 
     blob = bucket.blob(object_name)
     blob.upload_from_string(
         json.dumps(metadata, ensure_ascii=False, indent=2),
-        content_type="application/json; charset=utf-8",
+        content_type="application/json",
     )
 
-    gcs_uri = f"gs://{BUCKET_NAME}/{object_name}"
-
     return {
-        "gcs_uri": gcs_uri,
+        "gcs_uri": f"gs://{BUCKET_NAME}/{object_name}",
         "bucket": BUCKET_NAME,
         "object_name": object_name,
     }
+
+
+save_metadata_to_gcs = FunctionTool(_save_metadata)
