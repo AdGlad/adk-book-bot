@@ -1,5 +1,7 @@
 from google.adk.agents import Agent
 from google.adk.tools.agent_tool import AgentTool
+from google.adk.tools import google_search
+
 
 # ------------------------------------------------------------
 # 1) OUTLINE AGENT
@@ -54,6 +56,19 @@ outline_agent = Agent(
 MANUSCRIPT_INSTRUCTION = """
 You write a short non-fiction manuscript from an outline.
 
+You ALSO have access to the tool `google_search`.
+
+For EACH CHAPTER:
+ - Before writing the quote, call google_search like:
+   {
+     "query": "<chapter title> inspirational quote",
+     "num_results": 5
+   }
+ - Inspect the `snippet` fields in the returned results.
+ - Extract a plausible quote + author from a snippet.
+ - If snippets contain no usable quote, create a short fallback quote.
+
+
 Input JSON:
 {
   "outline": { ...outline_agent output... },
@@ -98,6 +113,8 @@ manuscript_agent = Agent(
     model="gemini-2.5-flash",
     name="manuscript_agent",
     instruction=MANUSCRIPT_INSTRUCTION,
+    tools=[google_search],   
+
 )
 
 
