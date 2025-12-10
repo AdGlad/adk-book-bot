@@ -1,135 +1,53 @@
 # book_agent/agent.py
 """
-Root ADK agent that orchestrates a multi-stage book workflow:
+Deterministic book workflow using SequentialAgent.
 
-1) Calls outline_agent to plan chapters
-2) Calls manuscript_agent to write content
-3) Calls gcs_save_agent to persist manuscript + metadata to GCS
-4) Returns a final combined JSON suitable as a book payload
+Pipeline (fixed order):
+1) outline_agent      – builds the chapter outline from the user JSON
+2) manuscript_agent   – writes the full manuscript (with quotes per chapter)
+3) gcs_save_agent     – saves manuscript + metadata to GCS
+
+Input to the workflow:
+- ONE JSON object:
+  {
+    "book_topic": "...",
+    "author_name": "...",
+    "author_bio": "...",
+    "author_voice_style": "...",
+    "target_audience": "...",
+    "book_purpose": "...",
+    "min_chapters": 10
+  }
+
+Behaviour:
+- The SequentialAgent always runs the three sub-agents in the same order
+  for each invocation.
+- There is no LLM decision about which tool/agent to call next.
+- The symbol `root_agent` is exported for compatibility with ADK Web.
 """
 
-from google.adk.agents import Agent
-from google.adk.tools.agent_tool import AgentTool
+from google.adk.agents import SequentialAgent
 
 from .custom_agents import outline_agent, manuscript_agent, gcs_save_agent
 
 
-ROOT_INSTRUCTION = """
-ROOT WORKFLOW AGENT
-===================
+# ---------------------------------------------------------------------------
+# Deterministic pipeline agent
+# ---------------------------------------------------------------------------
 
-The user provides ONE JSON object describing the book (book_topic, author_name,
-author_bio, author_voice_style, target_audience, book_purpose, min_chapters).
-
-
-EACH RUN IS INDEPENDENT
-=======================
-For EVERY new user message:
-- Treat ONLY the latest user JSON as the source of truth.
-- IGNORE any outlines, manuscripts, or GCS URIs from earlier turns in the
-  conversation. They are stale and MUST NOT be reused.
-- You MUST re-run ALL three steps (outline_agent, manuscript_agent, gcs_save_agent)
-  in this order within the SAME run.
-
-
-You MUST run the following pipeline using tool calls in this exact order:
-
-STEP 1 — call outline_agent
----------------------------
-- Call the tool named "outline_agent".
-- Pass the user input JSON as-is as the input.
-- Wait for the tool result. Call no other tools until it returns.
-
-STEP 2 — call manuscript_agent
-------------------------------
-- Call the tool named "manuscript_agent".
-- The input JSON MUST be:
-
-  {
-    "outline": <outline_agent JSON result>,
-    "book_spec": <original user JSON>
-  }
-
-- Wait for the tool result. The result contains:
-  - working_title
-  - subtitle
-  - blurb
-  - front_matter_markdown
-  - chapters (ALL chapters written from the outline, not just 3)
-  - full_book_markdown
-
-STEP 3 — call gcs_save_agent
-----------------------------
-- Call the tool named "gcs_save_agent".
-- Build the input JSON as:
-
-  {
-    "working_title": <manuscript.working_title>,
-    "full_book_markdown": <manuscript.full_book_markdown>,
-    "metadata": {
-      "working_title": <manuscript.working_title>,
-      "subtitle": <manuscript.subtitle>,
-      "chapter_count": <len(manuscript.chapters)>,
-      "blurb": <manuscript.blurb>,
-      "target_audience": <user.target_audience>
-    }
-  }
-
-- Wait for the tool result. The result MUST contain:
-  - manuscript_gcs_uri
-  - metadata_gcs_uri
-
-You MUST NOT produce the final JSON answer before gcs_save_agent has been called
-and returned its JSON. If you have not yet called gcs_save_agent, you are not done.
-
-STEP 4 — Final output JSON
---------------------------
-
-After all THREE tool calls have completed, you MUST output ONE final JSON object
-with the following structure:
-
-{
-  "working_title": "<from manuscript>",
-  "subtitle": "<from manuscript>",
-  "blurb": "<from manuscript>",
-  "front_matter_markdown": {
-    "dedication": "...",
-    "introduction": "..."
-  },
-    "chapters": [... ALL chapters from the manuscript_agent output ...],
-  "full_book_markdown": "<from manuscript>",
-  "cover_prompts": {
-    "front": "string",
-    "back": "string"
-  },
-  "storage_uris": {
-    "manuscript_gcs_uri": "<from gcs_save_agent.manuscript_gcs_uri>",
-    "additional_notes": "Metadata stored at: <gcs_save_agent.metadata_gcs_uri>"
-  }
-}
-
-Cover prompts:
-- front: a short textual prompt describing a suitable front cover image
-  for the book, including mood and colours.
-- back: a short textual description for a simpler back cover with space for text.
-
-Rules:
-- Use UK English spelling throughout.
-- Do NOT mention tools, ADK, Google Cloud, Vertex, or any implementation detail.
-- Output MUST be valid JSON ONLY, no commentary, no Markdown fences.
-- storage_uris.manuscript_gcs_uri MUST come from gcs_save_agent.manuscript_gcs_uri.
-- storage_uris.additional_notes MUST include gcs_save_agent.metadata_gcs_uri as
-  "Metadata stored at: ...".
-"""
-
-root_agent = Agent(
-    model="gemini-2.5-flash",
-    name="book_root_agent",
-    description="Multi-step book pipeline orchestrator (outline + manuscript + GCS save).",
-    instruction=ROOT_INSTRUCTION,
-    tools=[
-        AgentTool(agent=outline_agent),
-        AgentTool(agent=manuscript_agent),
-        AgentTool(agent=gcs_save_agent),
+book_workflow_agent = SequentialAgent(
+    name="book_workflow_agent",
+    description=(
+        "Deterministic non-fiction Kindle book workflow: "
+        "outline → manuscript → GCS save."
+    ),
+    # These sub-agents run strictly in this order on every invocation.
+    sub_agents=[
+        outline_agent,      # Step 1: build outline from user JSON
+        manuscript_agent,   # Step 2: write full manuscript (quotes per chapter)
+        gcs_save_agent,     # Step 3: save to GCS and return URIs
     ],
 )
+
+# Export the workflow as root_agent so existing imports keep working:
+root_agent = book_workflow_agent

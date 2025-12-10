@@ -3,8 +3,8 @@
 Function tools for saving book data to Google Cloud Storage.
 
 Exposed tools:
-- save_markdown_to_gcs(book_title: str, content_markdown: str) -> dict
-- save_metadata_to_gcs(book_title: str, metadata: dict) -> dict
+- save_markdown_to_gcs_tool(book_title: str, content_markdown: str) -> dict
+- save_metadata_to_gcs_tool(book_title: str, metadata: dict) -> dict
 """
 
 import json
@@ -36,7 +36,7 @@ def _safe_title(title: str) -> str:
 
 
 # ---------------------------------------------------------------------
-# save_markdown_to_gcs
+# Implementation functions (plain Python)
 # ---------------------------------------------------------------------
 def save_markdown_to_gcs(book_title: str, content_markdown: str) -> dict:
     """
@@ -62,13 +62,6 @@ def save_markdown_to_gcs(book_title: str, content_markdown: str) -> dict:
     }
 
 
-# Tool exposure — **no name= or description= allowed**
-save_markdown_to_gcs_tool = FunctionTool(func=save_markdown_to_gcs)
-
-
-# ---------------------------------------------------------------------
-# save_metadata_to_gcs
-# ---------------------------------------------------------------------
 def save_metadata_to_gcs(book_title: str, metadata: dict) -> dict:
     """
     Saves a metadata JSON file to Google Cloud Storage.
@@ -96,6 +89,11 @@ def save_metadata_to_gcs(book_title: str, metadata: dict) -> dict:
     }
 
 
-# Tool exposure
-save_markdown_to_gcs = FunctionTool(save_markdown_to_gcs)
-save_metadata_to_gcs = FunctionTool(save_metadata_to_gcs)
+# ---------------------------------------------------------------------
+# Tool exposure (single tool object per function)
+# ---------------------------------------------------------------------
+# ADK will infer the tool name from the underlying function name, e.g.
+# "save_markdown_to_gcs" and "save_metadata_to_gcs".
+
+save_markdown_to_gcs_tool = FunctionTool(save_markdown_to_gcs)
+save_metadata_to_gcs_tool = FunctionTool(save_metadata_to_gcs)

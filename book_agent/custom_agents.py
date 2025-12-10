@@ -35,6 +35,17 @@ You MUST output JSON ONLY:
   "notes_for_writer": "string"
 }
 
+HARD RULES ABOUT CHAPTERS
+=========================
+- Let N = min_chapters from the input.
+- The length of the "chapters" array MUST be AT LEAST N.
+- You MUST NOT return fewer than N chapters under any circumstances.
+- You MAY add a few extra chapters if it genuinely improves the structure,
+  but NEVER exceed 25 chapters in total.
+- Chapter numbers MUST be sequential integers starting at 1 (1, 2, 3, ...).
+- Each chapter MUST have a distinct, commercially appealing, short title.
+
+
 Rules:
 - Use UK English spelling.
 - Chapters >= min_chapters, max 25.
@@ -110,6 +121,22 @@ CHAPTER RULES
 - Pull working_title and subtitle from outline.
 - For EVERY chapter in outline.chapters, create a corresponding chapter object
   in the output "chapters" list (same number, same intent for title/subheading).
+
+STRICT CHAPTER MAPPING
+======================
+- Let N = len(outline.chapters).
+- You MUST create EXACTLY N chapter objects in the output "chapters" list.
+- For EVERY chapter in outline.chapters, you MUST create a corresponding
+  chapter object with:
+  - the same "number"
+  - a title that preserves the same intent
+  - a subheading that preserves the same intent
+- You MUST NOT merge, drop, or re-number chapters.
+- The number of chapters in the manuscript output MUST match the number of
+  chapters in the outline 1:1.
+
+CHAPTER OBJECT SHAPE
+====================
 - Each chapter object must have:
 
   {
@@ -123,6 +150,9 @@ CHAPTER RULES
     "summary": "short 1–2 sentence summary of the chapter",
     "content_markdown": "full chapter content in Markdown"
   }
+
+CONTENT MARKDOWN LAYOUT
+=======================
 
 - The content_markdown for each chapter MUST follow this layout:
 
@@ -172,48 +202,54 @@ manuscript_agent = Agent(
 # ------------------------------------------------------------
 
 GCS_SAVE_INSTRUCTION = """
-You save data to GCS using tools.
+You save book data to cloud storage using tools.
 
 Input JSON:
 {
-  "working_title": "...",
-  "full_book_markdown": "...",
-  "metadata": { ... }
+  "working_title": "string",
+  "full_book_markdown": "string",
+  "metadata": { ...object... }
 }
 
-You MUST:
+You MUST perform EXACTLY these steps in this order.
 
-1) Call tool "save_markdown_to_gcs" with:
-   {
-     "book_title": working_title,
-     "content_markdown": full_book_markdown
-   }
-
-2) After that tool returns, call "save_metadata_to_gcs" with:
-   {
-     "book_title": working_title,
-     "metadata": metadata
-   }
-
-3) Finally, output JSON ONLY:
-1) Call tool save_markdown_to_gcs(book_title, content_markdown)
-2) Call tool save_metadata_to_gcs(book_title, metadata)
-3) Output JSON ONLY:
+STEP 1 – Call save_markdown_to_gcs
+----------------------------------
+Call the tool named "save_markdown_to_gcs" with a JSON object:
 
 {
-  "manuscript_gcs_uri": "gs://...",
-  "metadata_gcs_uri": "gs://..."
+  "book_title": <working_title>,
+  "content_markdown": <full_book_markdown>
+}
+
+STEP 2 – After STEP 1 returns, call save_metadata_to_gcs
+--------------------------------------------------------
+Let manuscript_result be the JSON result from STEP 1.
+Call the tool named "save_metadata_to_gcs" with a JSON object:
+
+{
+  "book_title": <working_title>,
+  "metadata": <metadata>
+}
+
+STEP 3 – Final output
+---------------------
+After BOTH tool calls succeed, output JSON ONLY:
+
+{
+  "manuscript_gcs_uri": "<the gcs_uri returned by save_markdown_to_gcs>",
+  "metadata_gcs_uri": "<the gcs_uri returned by save_metadata_to_gcs>"
 }
 """
 
-from .tools import save_markdown_to_gcs, save_metadata_to_gcs
+from .tools import save_markdown_to_gcs_tool, save_metadata_to_gcs_tool
 
 gcs_save_agent = Agent(
     model="gemini-2.5-flash",
     name="gcs_save_agent",
     instruction=GCS_SAVE_INSTRUCTION,
     tools=[
-        save_markdown_to_gcs,
-        save_metadata_to_gcs,
-    ]
+        save_markdown_to_gcs_tool,
+        save_metadata_to_gcs_tool,
+    ],
 )
