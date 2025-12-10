@@ -54,25 +54,41 @@ outline_agent = Agent(
 # ------------------------------------------------------------
 
 MANUSCRIPT_INSTRUCTION = """
-You write a short non-fiction manuscript from an outline.
+You write a non-fiction manuscript from an outline.
 
 You ALSO have access to the tool `google_search`.
 
 For EACH CHAPTER:
- - Before writing the quote, call google_search like:
+ - Before choosing the quote, call google_search like:
    {
-     "query": "<chapter title> inspirational quote",
+     "query": "<book_spec.book_topic> <chapter title> inspirational quote",
      "num_results": 5
    }
  - Inspect the `snippet` fields in the returned results.
- - Extract a plausible quote + author from a snippet.
- - If snippets contain no usable quote, create a short fallback quote.
-
+ - Extract a plausible short quote + author from a snippet.
+ - If snippets contain no usable quote, create a short fallback quote that fits
+   the chapter theme.
 
 Input JSON:
 {
   "outline": { ...outline_agent output... },
   "book_spec": { ...original user JSON... }
+}
+
+The outline has this shape:
+{
+  "working_title": "string",
+  "subtitle": "string",
+  "chapters": [
+    {
+      "number": 1,
+      "title": "string",
+      "subheading": "string",
+      "approx_word_count": 2000
+    },
+    ...
+  ],
+  "notes_for_writer": "string"
 }
 
 You MUST output JSON ONLY:
@@ -85,35 +101,67 @@ You MUST output JSON ONLY:
       "dedication": "string",
       "introduction": "string"
   },
-  "chapters": [ ... EXACTLY 3 chapters ... ],
+  "chapters": [ ... ONE entry per outline chapter ... ],
   "full_book_markdown": "string"
 }
 
-Rules:
-- Pull title + subtitle from outline.
-- Use first 3 chapters of outline only.
-- Each chapter must follow this Markdown layout:
+CHAPTER RULES
+=============
+- Pull working_title and subtitle from outline.
+- For EVERY chapter in outline.chapters, create a corresponding chapter object
+  in the output "chapters" list (same number, same intent for title/subheading).
+- Each chapter object must have:
+
+  {
+    "number": <int>,
+    "title": "string",
+    "subheading": "string",
+    "quote": {
+      "text": "string",
+      "author": "string"
+    },
+    "summary": "short 1–2 sentence summary of the chapter",
+    "content_markdown": "full chapter content in Markdown"
+  }
+
+- The content_markdown for each chapter MUST follow this layout:
 
 ## Chapter N – Title
 _Subheading_
 > "Quote text"
 > — Author
 
-Paragraphs...
+Body paragraphs...
 
 ### Reflection questions
 1. ...
 2. ...
+(2–4 questions total)
 
+FULL BOOK MARKDOWN
+==================
+- full_book_markdown must be ONE Markdown string containing:
+  1. Title page (title + subtitle + author_name from book_spec)
+  2. Dedication
+  3. Introduction
+  4. ALL chapters in order of chapter.number, using the exact
+     content_markdown you generated for each chapter.
+
+STYLE RULES
+===========
 - Use UK English spelling.
-- Do NOT call tools. Only write JSON.
+- Aim tone and level at book_spec.target_audience.
+- Respect book_spec.author_voice_style as the general voice.
+- Do NOT mention tools, google_search, ADK, or Google Cloud.
+- Do NOT output Markdown fences or commentary; ONLY the JSON object.
 """
+
 
 manuscript_agent = Agent(
     model="gemini-2.5-flash",
     name="manuscript_agent",
     instruction=MANUSCRIPT_INSTRUCTION,
-    tools=[google_search],   
+        tools=[google_search],   # << 🔥 important
 
 )
 

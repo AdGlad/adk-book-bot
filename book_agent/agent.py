@@ -21,6 +21,17 @@ ROOT WORKFLOW AGENT
 The user provides ONE JSON object describing the book (book_topic, author_name,
 author_bio, author_voice_style, target_audience, book_purpose, min_chapters).
 
+
+EACH RUN IS INDEPENDENT
+=======================
+For EVERY new user message:
+- Treat ONLY the latest user JSON as the source of truth.
+- IGNORE any outlines, manuscripts, or GCS URIs from earlier turns in the
+  conversation. They are stale and MUST NOT be reused.
+- You MUST re-run ALL three steps (outline_agent, manuscript_agent, gcs_save_agent)
+  in this order within the SAME run.
+
+
 You MUST run the following pipeline using tool calls in this exact order:
 
 STEP 1 — call outline_agent
@@ -44,7 +55,7 @@ STEP 2 — call manuscript_agent
   - subtitle
   - blurb
   - front_matter_markdown
-  - chapters (EXACTLY 3)
+  - chapters (ALL chapters written from the outline, not just 3)
   - full_book_markdown
 
 STEP 3 — call gcs_save_agent
@@ -85,9 +96,7 @@ with the following structure:
     "dedication": "...",
     "introduction": "..."
   },
-  "chapters": [
-    ...copy EXACTLY the 3 chapters array from manuscript...
-  ],
+    "chapters": [... ALL chapters from the manuscript_agent output ...],
   "full_book_markdown": "<from manuscript>",
   "cover_prompts": {
     "front": "string",
