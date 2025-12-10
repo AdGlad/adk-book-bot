@@ -1,53 +1,78 @@
 # book_agent/agent.py
 """
-Deterministic book workflow using SequentialAgent.
-
-Pipeline (fixed order):
-1) outline_agent      – builds the chapter outline from the user JSON
-2) manuscript_agent   – writes the full manuscript (with quotes per chapter)
-3) gcs_save_agent     – saves manuscript + metadata to GCS
-
-Input to the workflow:
-- ONE JSON object:
-  {
-    "book_topic": "...",
-    "author_name": "...",
-    "author_bio": "...",
-    "author_voice_style": "...",
-    "target_audience": "...",
-    "book_purpose": "...",
-    "min_chapters": 10
-  }
-
-Behaviour:
-- The SequentialAgent always runs the three sub-agents in the same order
-  for each invocation.
-- There is no LLM decision about which tool/agent to call next.
-- The symbol `root_agent` is exported for compatibility with ADK Web.
+Parallel-only Kindle book workflow.
+Runs:
+1. outline_agent_parallel  (cloned outline agent)
+2. chapter_parallel_agent  (ParallelAgent running cloned chapter writer agents)
 """
 
-from google.adk.agents import SequentialAgent
+from google.adk.agents import SequentialAgent, ParallelAgent
+from .custom_agents import (
+    outline_agent,
+    chapter_writer_agents,
+)
 
-from .custom_agents import outline_agent, manuscript_agent, gcs_save_agent
+
+# ------------------------------------------------------------
+# Helper to clone agents (avoid parent-agent conflicts)
+# ------------------------------------------------------------
+
+def clone_agent(agent, new_name: str):
+    return type(agent)(
+        name=new_name,
+        model=agent.model,
+        description=agent.description,
+        instruction=agent.instruction,
+        tools=agent.tools.copy() if agent.tools else [],
+        sub_agents=[]
+    )
 
 
-# ---------------------------------------------------------------------------
-# Deterministic pipeline agent
-# ---------------------------------------------------------------------------
+# ------------------------------------------------------------
+# Clone outline agent for exclusive use in the parallel workflow
+# ------------------------------------------------------------
 
-book_workflow_agent = SequentialAgent(
-    name="book_workflow_agent",
-    description=(
-        "Deterministic non-fiction Kindle book workflow: "
-        "outline → manuscript → GCS save."
-    ),
-    # These sub-agents run strictly in this order on every invocation.
+outline_agent_parallel = clone_agent(outline_agent, "outline_agent_parallel")
+
+
+# ------------------------------------------------------------
+# Clone chapter writer agents for parallel run
+# ------------------------------------------------------------
+
+chapter_writers_parallel = [
+    clone_agent(agent, f"{agent.name}_parallel")
+    for agent in chapter_writer_agents
+]
+
+
+# ------------------------------------------------------------
+# Parallel agent: runs all chapter writers at the same time
+# ------------------------------------------------------------
+
+chapter_parallel_agent = ParallelAgent(
+    name="chapter_parallel_agent",
+    description="Runs chapter writer agents in parallel.",
+    sub_agents=chapter_writers_parallel,
+)
+
+
+# ------------------------------------------------------------
+# Build the entire workflow:
+# outline → (parallel) chapters
+# ------------------------------------------------------------
+
+parallel_book_demo_agent = SequentialAgent(
+    name="parallel_book_demo_agent",
+    description="Parallel-only pipeline: outline → chapter writers.",
     sub_agents=[
-        outline_agent,      # Step 1: build outline from user JSON
-        manuscript_agent,   # Step 2: write full manuscript (quotes per chapter)
-        gcs_save_agent,     # Step 3: save to GCS and return URIs
+        outline_agent_parallel,
+        chapter_parallel_agent,
     ],
 )
 
-# Export the workflow as root_agent so existing imports keep working:
-root_agent = book_workflow_agent
+
+# ------------------------------------------------------------
+# Root agent for ADK app
+# ------------------------------------------------------------
+
+root_agent = parallel_book_demo_agent

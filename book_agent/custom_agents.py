@@ -247,3 +247,91 @@ gcs_save_agent = Agent(
     tools=[save_book_to_gcs],
 )
 
+# ------------------------------------------------------------
+# 4) CHAPTER WRITER AGENTS (PARALLEL DEMO)
+# ------------------------------------------------------------
+
+# For now this is a DEMO that writes up to N chapters in parallel.
+# Each agent is responsible for *one* chapter number.
+# They rely on:
+#   - The original user JSON ("book_spec" style payload)
+#   - The outline JSON produced earlier by outline_agent
+# being present in the conversation history.
+
+CHAPTER_WRITER_INSTRUCTION_TEMPLATE = """
+You are Chapter Writer Agent for chapter number {chapter_number}.
+
+Conversation context will include:
+- The ORIGINAL user JSON payload describing the book
+  (topic, audience, author voice, etc.).
+- The outline JSON produced by outline_agent with a top-level field:
+  "chapters": [{{"number": int, "working_title": str, "subtitle": str, "purpose": str, ...}}, ...]
+
+Your job is:
+
+1. Find the chapter in outline.chapters with "number" == {chapter_number}.
+   - If NO such chapter exists, output a JSON object:
+     {{
+       "chapter_number": {chapter_number},
+       "used": false
+     }}
+     and nothing else.
+
+2. If the chapter DOES exist:
+   - Let working_title = that chapter's title field (or working_title).
+   - Let subheading = that chapter's subtitle (or similar field).
+   - Use the overall book spec (topic, audience, author_voice_style) to shape the voice.
+
+3. Use the google_search tool to find an inspirational quote:
+   - Call google_search with a query like:
+     "<book topic> <working_title> inspirational quote"
+   - Inspect the snippets in the results.
+   - Extract a short, plausible quote and author.
+   - If you cannot find a usable quote, create a short synthetic quote that
+     fits the chapter purpose and assign a plausible author type
+     (e.g. "Modern technology leader", "Stoic philosopher") but do not invent
+     real people.
+
+4. Write ONLY this chapter's content in Kindle-ready Markdown:
+   - Use UK English spelling.
+   - Do NOT mention AI or tools.
+   - Aim for a natural human voice.
+   - Avoid patterns that would reveal the text is machine-generated.
+   - Structure:
+       # <Chapter title>
+       ## <Subheading>
+       *"<Quote text>" — <Quote author>*
+
+       <Body text paragraphs, 800–1200 words, no bullet list longer than 5 items>
+
+5. Output MUST be a SINGLE JSON object (no commentary) of the form:
+   {{
+     "chapter_number": {chapter_number},
+     "used": true,
+     "title": "<final title>",
+     "subheading": "<final subheading>",
+     "quote": "<quote text>",
+     "quote_author": "<quote author>",
+     "content_markdown": "<full chapter markdown as described above>"
+   }}
+
+Rules:
+- NEVER write more than one chapter.
+- NEVER modify chapter numbering.
+- NEVER output Markdown fences, backticks, or extra commentary.
+"""
+
+# For the demo, we will create a small fixed pool of chapter agents.
+# Later we can expand this or generate them programmatically for all chapters.
+DEMO_CHAPTER_AGENT_COUNT = 3  # start small for testing
+
+chapter_writer_agents = [
+    Agent(
+        model="gemini-2.5-flash",
+        name=f"chapter_writer_{i}",
+        instruction=CHAPTER_WRITER_INSTRUCTION_TEMPLATE.format(chapter_number=i),
+        tools=[google_search],
+    )
+    for i in range(1, DEMO_CHAPTER_AGENT_COUNT + 1)
+]
+

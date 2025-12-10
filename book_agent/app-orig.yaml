@@ -1,0 +1,3 @@
+app_name: book_bot
+root_agent: book_agent.agent.root_agent
+description: "Deterministic book-writing pipeline (outline → manuscript → GCS)."
